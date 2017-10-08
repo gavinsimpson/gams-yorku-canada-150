@@ -1,0 +1,181 @@
+---
+title: "Generalised additive models"
+subtitle: "An introduction with R"
+author: "Gavin Simpson"
+date: "2017-10-17"
+output:
+  xaringan::moon_reader:
+    css: ['default', './resources/my.css']
+    lib_dir: libs
+    nature:
+      highlightStyle: github
+      highlightLines: true
+      countIncrementalSlides: false
+      ratio: '16:9'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(comment=NA,
+                      echo = FALSE, message = FALSE, warning = FALSE, cache = FALSE,
+                      fig.align = 'center', fig.height = 5, fig.width = 9, dev = 'svg')
+knitr::knit_hooks$set(crop.plot = knitr::hook_pdfcrop)
+options(htmltools.dir.version = FALSE)
+```
+```{r packages, include = FALSE, cache = FALSE}
+library('mgcv')
+library('gamair')
+library('ggplot2')
+library('cowplot')
+theme_set(theme_bw())
+library('tidyr')
+```
+
+# Introduction
+
+---
+
+# Small Water
+
+```{r small-water}
+small <- readRDS('./data/small-water-isotope-data.rds')
+
+d15n_label <- expression(delta^{15} * N) # y-axis label for plot
+## data plot
+small_plt <- ggplot(small, aes(x = Year, y = d15N)) +
+    geom_point() +
+    labs(y = d15n_label, x = "Year CE")
+small_plt
+```
+
+---
+
+# Polynomials
+
+```{r polynomials, dependson = 'small-water'}
+p <- c(1,3,5,10)         # order of polynomial
+N <- 300                 # number of prediction points
+## prediction data
+newd <- with(small, data.frame(Year = seq(min(Year), max(Year), length = N)))
+## function to fit linear models with polynomials
+polyFun <- function(i, data = data) {
+    lm(d15N ~ poly(Year, degree = i), data = data)
+}
+## fit models for polynomials p
+mods <- lapply(p, polyFun, data = small)
+## predict using each model
+pred <- vapply(mods, predict, numeric(N), newdata = newd)
+colnames(pred) <- p                     # add nice column names
+newd <- cbind(newd, pred)               # combine
+polyDat <- gather(newd, Degree, Fitted, - Year) # to long format
+polyDat <- transform(polyDat, Degree = ordered(Degree, levels = p))
+
+## add polynomial fits
+polyPlt <- small_plt +
+    geom_line(data = polyDat, mapping = aes(x = Year, y = Fitted, colour = Degree)) +
+    scale_color_brewer(name = "Degree of polynomial:", palette = "PuOr") +
+    theme(legend.position = "top")
+polyPlt
+```
+
+---
+
+# Basis functions
+
+```{r basis-functions-1, dependson = 'small-water', fig.height = 3.5}
+k <- 7
+df <- with(small, data.frame(Year = seq(min(Year), max(Year), length = 200)))
+knots <- with(small, list(Year = seq(min(Year), max(Year), length = k)))
+sm <- smoothCon(s(Year, k = k, bs = "cr"), data = df, knots = knots)[[1]]$X
+colnames(sm) <- levs <- paste0("F", seq_len(k))
+basis <- gather(cbind(sm, df), Fun, Value, -Year)
+basis <- transform(basis, Fun = factor(Fun, levels = levs))
+
+sm2 <- smoothCon(s(Year, k = k, bs = "cr"), data = small, knots = knots)[[1]]$X
+beta <- coef(lm(d15N ~ sm2 - 1, data = small))
+scbasis <- sweep(sm, 2L, beta, FUN = "*")
+colnames(scbasis) <- levs <- paste0("F", seq_len(k))
+fit <- cbind(df, fitted = rowSums(scbasis))
+scbasis <- gather(cbind(scbasis, df), Fun, Value, -Year)
+scbasis <- transform(scbasis, Fun = factor(Fun, levels = levs))
+
+ylims <- range(basis$Value, scbasis$Value, small$d15N)
+
+p1 <- ggplot(basis, aes(x = Year, y = Value, group = Fun, colour = Fun)) +
+    geom_path() +
+    scale_x_continuous(breaks = knots$Year, labels = NULL, minor_breaks = NULL) +
+    scale_y_continuous(limits = ylims) +
+    scale_colour_discrete(name = "Basis Function") +
+    theme(legend.position = "none") +
+    geom_point(data = small, mapping = aes(x = Year, y = d15N), inherit.aes = FALSE, size = 2, colour = "grey70") +
+    labs(y = d15n_label, x = "Year CE (Knots)")
+
+p2 <- ggplot(scbasis, aes(x = Year, y = Value, group = Fun, colour = Fun)) +
+    geom_path() +
+    scale_x_continuous(breaks = knots$Year, labels = NULL, minor_breaks = NULL) +
+    scale_y_continuous(limits = ylims) +
+    scale_colour_discrete(name = "Basis Function") +
+    theme(legend.position = "none") +
+    geom_point(data = small, mapping = aes(x = Year, y = d15N), inherit.aes = FALSE, size = 2, colour = "grey70") +
+    geom_line(data = fit, mapping = aes(x = Year, y = fitted), inherit.aes = FALSE,
+              size = 0.75, colour = "black") +
+    labs(y = d15n_label, x = "Year CE (Knots)")
+
+pbasis <- plot_grid(p1, p2, ncol = 2, align = "hv", labels = "auto")
+pbasis
+```
+
+---
+
+# Portugese larks
+
+.pull-left[
+
+```{r birds-1, echo = TRUE}
+library('gamair')
+data(bird)
+
+bird <- transform(bird,
+            crestlark = factor(crestlark),
+            linnet = factor(linnet),
+            x = x / 1000,
+            y = y / 1000)
+head(bird)
+```
+]
+
+.pull-right[
+
+```{r birds-2, fig.width = 4, fig.height = 5}
+ggplot(bird, aes(x = x, y = y, colour = crestlark)) + geom_point(size = 0.5) + coord_fixed() + scale_colour_discrete(na.value = '#bbbbbb33') + labs(x = NULL, y = NULL)
+```
+]
+
+---
+ 
+# Portugese larks &mdash; binomial GAM
+
+.pull-left[
+```{r birds-gam-1, echo = TRUE}
+crest <- gam(crestlark ~ s(x, y, k = 100),
+             data = bird,
+             family = binomial,
+             method = 'REML')
+```
+
+$f(x, y)$ indicated by `s(x, y)` in the formula
+
+Isotropic thin plate spline
+
+`k` sets size of basis dimension; upper limit on EDF
+
+Smoothness parameters estimated via REML
+
+]
+
+.pull-right[
+.small[
+```{r birds-gam-2, echo = TRUE}
+summary(crest)
+```
+]
+]
