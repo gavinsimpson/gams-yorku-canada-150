@@ -16,8 +16,8 @@ output:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(comment=NA,
-                      echo = FALSE, message = FALSE, warning = FALSE, cache = FALSE,
-                      fig.align = 'center', fig.height = 5, fig.width = 9, dev = 'svg')
+                      echo = FALSE, message = FALSE, warning = FALSE, cache = TRUE,
+                      fig.align = 'center', fig.height = 4.5, fig.width = 8, dev = 'svg')
 knitr::knit_hooks$set(crop.plot = knitr::hook_pdfcrop)
 options(htmltools.dir.version = FALSE)
 ```
@@ -26,15 +26,109 @@ library('mgcv')
 library('gamair')
 library('ggplot2')
 library('cowplot')
-theme_set(theme_bw())
 library('tidyr')
 ```
+```{r ggplot-set-up, cache=FALSE}
+theme_set(theme_minimal())
+```
 
-# Introduction
+# Preamble
+
+---
+
+# What are GAMs?
+
+**G**eneralized **A**dditive **M**odel
+
+* Generalized because they can handle response distibutions beyond the normal or Gaussian
+    - **mgcv** can handle many types of data that lie even beyond traditional GLMs
+
+* Additive &mdash; terms simply **add** together
+
+* Model &mdash; a GAM has lots of theory for doing inference
+
+---
+
+# Linear Models
+
+$$y_i ~ \mathcal{N}(\mu_i, \sigma^2)$$
+
+$$\mu_i = \beta_0 + \beta_1 x_{1i} + \beta_2 x_{2i} + \cdots + \beta_j x_{ji}$$
+
+Assumptions
+
+* linear effects of covariates are good approximation of the true effects
+
+* conditional on the values of covariates, $y_i | \mathbf{X} \sim \mathcal{N}(0, \sigma^2)$
+
+* this implies all observations have the same *variance*
+
+* $y_i | \mathbf{X}$ are *independent*
+
+An **additive** model address the first of these
+
+---
+class: inverse center middle
+
+# Why bother with anything more complex?
+
+---
+
+# Is this linear?
+
+```{r islinear}
+set.seed(2)
+dat <- gamSim(1, n=400, dist="normal", scale=1, verbose=FALSE)
+dat <- dat[,c("y", "x0", "x1", "x2", "x3")]
+p <- ggplot(dat,aes(y=y,x=x1)) +
+      geom_point()
+p
+```
+
+---
+
+# Is this linear? Maybe?
+
+```{r eval=FALSE, echo=TRUE}
+lm(y ~ x1, data=dat)
+```
+
+
+```{r maybe}
+p <- ggplot(dat, aes(x = x1, y = y)) + geom_point() +
+      theme_minimal()
+p + geom_smooth(method="lm")
+```
+
+---
+class: inverse center middle
+
+# What can we do about it?
+
+---
+
+# Adding a quadratic term?
+
+```{r eval=FALSE, echo=TRUE}
+lm(y ~ poly(x1, 2), data = dat)
+```
+
+```{r quadratic}
+p <- ggplot(dat, aes(y=y, x=x1)) + geom_point() +
+      theme_minimal()
+print(p + geom_smooth(method="lm", formula=y~x+poly(x, 2)))
+```
+
+---
+class: inverse center middle
+
+# What about real data?
 
 ---
 
 # Small Water
+
+What degree polynomial should we use here?
 
 ```{r small-water}
 small <- readRDS('./data/small-water-isotope-data.rds')
@@ -79,9 +173,135 @@ polyPlt
 
 ---
 
+# Is this sustainable?
+
+Adding in quadratic (and higher terms) *can* make sense --- feels a bit *ad hoc*
+
+Better if we had a **framework** to deal with these issues?
+
+```{r ruhroh}
+p <- ggplot(dat, aes(y=y, x=x2)) + geom_point() +
+      theme_minimal()
+p + geom_smooth(method="lm", formula = y ~ poly(x, 2))
+```
+
+---
+class: inverse center middle
+
+# This is where GAMs are useful
+
+---
+
+# How is a GAM different?
+
+In GLM we model the mean of data as a sum of linear terms:
+
+$$y_i = \beta_0 +\sum_j \color{red}{ \beta_j x_{ji}} +\epsilon_i$$
+
+A GAM is a sum of _smooth functions_ or _smooths_
+
+$$y_i = \beta_0 + \sum_j \color{red}{s_j(x_{ji})} + \epsilon_i$$
+
+where $\epsilon_i \sim N(0, \sigma^2)$, $y_i \sim \text{Normal}$ (for now)
+
+Call the above equation the **linear predictor** in both cases.
+
+---
+
+# Fitting a GAM in R
+
+```r
+model <- gam(y ~ s(x1) + s(x2) + te(x3, x4), # formuala describing model
+             data = my_data_frame,           # your data
+             method = 'REML',                # or 'ML'
+             family = gaussian)              # or something more exotic
+```
+
+`s()` terms are smooths of one or more variables
+
+`te()` terms are the smooth equivalent of *main effects + interactions*
+
+---
+class: inverse center middle
+
+# Your turn
+
+---
+
+# Load the Small Water data
+
+```{r load-small-example, echo = TRUE}
+small <- readRDS('./data/small-water-isotope-data.rds')
+head(small)
+```
+
+---
+
+# Fit the GAM
+
+```{r fit-small-gam-example, echo = TRUE}
+sw <- gam(d15N ~ s(Year), data = small, method = 'REML')
+```
+
+---
+
+# Look at the model summary
+
+.small[
+```{r small-example-summary, echo = TRUE}
+summary(sw)
+```
+]
+
+---
+
+# Plot the fitted smooth
+
+```{r plot-small-example, echo = TRUE}
+plot(sw, shade = TRUE, residuals = TRUE, pch = 19)
+```
+
+---
+class: inverse
+background-image: url('./resources/rob-potter-398564.jpg')
+background-size: contain
+
+# What magic is this?
+
+.footnote[
+<a style="background-color:black;color:white;text-decoration:none;padding:4px 6px;font-family:-apple-system, BlinkMacSystemFont, &quot;San Francisco&quot;, &quot;Helvetica Neue&quot;, Helvetica, Ubuntu, Roboto, Noto, &quot;Segoe UI&quot;, Arial, sans-serif;font-size:12px;font-weight:bold;line-height:1.2;display:inline-block;border-radius:3px;" href="https://unsplash.com/@robpotter?utm_medium=referral&amp;utm_campaign=photographer-credit&amp;utm_content=creditBadge" target="_blank" rel="noopener noreferrer" title="Download free do whatever you want high-resolution photos from Rob Potter"><span style="display:inline-block;padding:2px 3px;"><svg xmlns="http://www.w3.org/2000/svg" style="height:12px;width:auto;position:relative;vertical-align:middle;top:-1px;fill:white;" viewBox="0 0 32 32"><title></title><path d="M20.8 18.1c0 2.7-2.2 4.8-4.8 4.8s-4.8-2.1-4.8-4.8c0-2.7 2.2-4.8 4.8-4.8 2.7.1 4.8 2.2 4.8 4.8zm11.2-7.4v14.9c0 2.3-1.9 4.3-4.3 4.3h-23.4c-2.4 0-4.3-1.9-4.3-4.3v-15c0-2.3 1.9-4.3 4.3-4.3h3.7l.8-2.3c.4-1.1 1.7-2 2.9-2h8.6c1.2 0 2.5.9 2.9 2l.8 2.4h3.7c2.4 0 4.3 1.9 4.3 4.3zm-8.6 7.5c0-4.1-3.3-7.5-7.5-7.5-4.1 0-7.5 3.4-7.5 7.5s3.3 7.5 7.5 7.5c4.2-.1 7.5-3.4 7.5-7.5z"></path></svg></span><span style="display:inline-block;padding:2px 3px;">Rob Potter</span></a>
+]
+
+---
+class: inverse
+background-image: url('./resources/ramon-salinero-271002.jpg')
+background-size: cover
+
+# What magic is this?
+
+.footnote[
+<a style="background-color:black;color:white;text-decoration:none;padding:4px 6px;font-family:-apple-system, BlinkMacSystemFont, &quot;San Francisco&quot;, &quot;Helvetica Neue&quot;, Helvetica, Ubuntu, Roboto, Noto, &quot;Segoe UI&quot;, Arial, sans-serif;font-size:12px;font-weight:bold;line-height:1.2;display:inline-block;border-radius:3px;" href="https://unsplash.com/@donramxn?utm_medium=referral&amp;utm_campaign=photographer-credit&amp;utm_content=creditBadge" target="_blank" rel="noopener noreferrer" title="Download free do whatever you want high-resolution photos from Ramón Salinero"><span style="display:inline-block;padding:2px 3px;"><svg xmlns="http://www.w3.org/2000/svg" style="height:12px;width:auto;position:relative;vertical-align:middle;top:-1px;fill:white;" viewBox="0 0 32 32"><title></title><path d="M20.8 18.1c0 2.7-2.2 4.8-4.8 4.8s-4.8-2.1-4.8-4.8c0-2.7 2.2-4.8 4.8-4.8 2.7.1 4.8 2.2 4.8 4.8zm11.2-7.4v14.9c0 2.3-1.9 4.3-4.3 4.3h-23.4c-2.4 0-4.3-1.9-4.3-4.3v-15c0-2.3 1.9-4.3 4.3-4.3h3.7l.8-2.3c.4-1.1 1.7-2 2.9-2h8.6c1.2 0 2.5.9 2.9 2l.8 2.4h3.7c2.4 0 4.3 1.9 4.3 4.3zm-8.6 7.5c0-4.1-3.3-7.5-7.5-7.5-4.1 0-7.5 3.4-7.5 7.5s3.3 7.5 7.5 7.5c4.2-.1 7.5-3.4 7.5-7.5z"></path></svg></span><span style="display:inline-block;padding:2px 3px;">Ramón Salinero</span></a>
+]
+
+---
+
+# Splines
+
+Splines are *functions* composed of simpler functions
+
+Simpler functions are *basis functions* & the set of basis functions is a *basis*
+
+When we model using splines, each basis function $b_k$ has a coefficient $\beta_k$
+
+Resultant spline is a the sum of these weighted basis functions, evaluated at the values of $x$
+
+$$s(x) = \sum_{k = 1}^K \beta_k b_k(x)$$
+
+---
+
 # Basis functions
 
-```{r basis-functions-1, dependson = 'small-water', fig.height = 3.5}
+```{r basis-functions-1, dependson = 'small-water', fig.height = 4, fig.width = 10}
 k <- 7
 df <- with(small, data.frame(Year = seq(min(Year), max(Year), length = 200)))
 knots <- with(small, list(Year = seq(min(Year), max(Year), length = k)))
@@ -126,6 +346,55 @@ pbasis
 
 ---
 
+# Basis functions
+
+.center[<img src='./resources/2dbasis.png', style='max-width: 45%;' />]
+
+---
+class: inverse center middle
+
+# How do we avoid overfitting?
+
+---
+
+# Avoiding overfitting
+
+.pull-left[
+```{r wiggles, fig.height=3, fig.width=5}
+# hacked from the example in ?gam
+set.seed(2) ## simulate some data... 
+dat <- gamSim(1,n=50,dist="normal",scale=0.5, verbose=FALSE)
+dat$y <- dat$f2 + rnorm(length(dat$f2), sd = sqrt(0.5))
+f2 <- function(x) 0.2*x^11*(10*(1-x))^6+10*(10*x)^3*(1-x)^10-mean(dat$y)
+ylim <- c(-4,6)
+
+# fit some models
+b.justright <- gam(y~ s(x2), data=dat)
+b.sp0 <- gam(y ~ s(x2, sp=0, k=50), data = dat)
+b.spinf <- gam(y ~ s(x2), data=dat, sp = 1e10)
+
+df <- data.frame(x2 = seq(0, 1, length = 100))
+df <- transform(df, f = f2(x2))
+dat <- transform(dat, ycent = y - mean(y))
+ggplot(df, aes(x = x2, y = f)) +
+    geom_line(colour = 'blue') +
+    geom_point(data = dat, aes(x = x2, y = ycent)) +
+    labs(x = 'x', y = 'y')
+```
+]
+
+.pull-right[
+* Want a line that is *close* to all the data (high likelihood)
+
+* Splines *could* just fit every data point, but this would be overfitting.  We know there is *error*
+
+* Easy to overfit &mdash; *smooth* curve.
+
+* How do we measure smoothness? Calculus!
+]
+
+---
+
 # Portugese larks
 
 .pull-left[
@@ -162,7 +431,7 @@ crest <- gam(crestlark ~ s(x, y, k = 100),
              method = 'REML')
 ```
 
-$f(x, y)$ indicated by `s(x, y)` in the formula
+$s(x, y)$ indicated by `s(x, y)` in the formula
 
 Isotropic thin plate spline
 
