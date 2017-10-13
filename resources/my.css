@@ -1,0 +1,15 @@
+
+/*@import url('https://fonts.googleapis.com/css?family=Roboto&subset=greek,greek-ext,latin-ext');*/
+
+@import url('https://fonts.googleapis.com/css?family=Open+Sans:300&subset=greek,greek-ext,latin-ext');
+@import url('https://fonts.googleapis.com/css?family=Roboto:300&subset=greek,greek-ext,latin-ext');
+
+body {
+    font-family: 'Roboto', 'Open Sans', 'Droid Serif', 'Palatino Linotype', 'Book Antiqua', Palatino, 'Microsoft YaHei', 'Songti SC', serif; }
+
+.small .remark-code-line,
+.small .remark-code-line  {
+    font-size: 14px;
+}
+
+.mjx-chtml{ font-size: 120% !important; }
