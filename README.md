@@ -17,7 +17,7 @@ You will require a recent version of R &mdash; ideally the latest 3.4.2 release 
 
 ### Packages
 
-We'll be using the **mgcv** package for fitting GAMs; make sure you ahve the latest version installed!
+We'll be using the **mgcv** package for fitting GAMs; make sure you have the latest version installed!
 
 Packages required:
 
