@@ -13,3 +13,8 @@ body {
 }
 
 .mjx-chtml{ font-size: 120% !important; }
+
+.smaller  .remark-code-line,
+.smaller .remark-code-line  {
+    font-size: 13px;
+}
